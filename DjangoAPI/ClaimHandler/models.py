@@ -1,3 +1,6 @@
 from django.db import models
 
-# Create your models here.
+class Claim(models.Model):
+    Id = models.AutoField(primary_key=True)
+    ClaimName = models.CharField(max_length=255)
+    Verified = models.BooleanField(required=False)
