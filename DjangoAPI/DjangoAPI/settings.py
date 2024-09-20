@@ -25,7 +25,11 @@ SECRET_KEY = 'django-insecure-(j-g07*h(8d@!zdi#dem0*$$pgwr%j)+a68y(c*piz%p1dplf8
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    'localhost',  # If you're accessing Django locally
+    '127.0.0.1',  # Local IP address
+    'claimhandler',     # The Docker service name
+]
 
 
 # Application definition

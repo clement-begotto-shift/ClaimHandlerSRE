@@ -8,7 +8,7 @@ alerting:
 scrape_configs:
   - job_name: "django"
     static_configs:
-      - targets: ["localhost:8000"]
+      - targets: ["claimhandler:8000"]
     relabel_configs:
       - source_labels: [__adress__]
         regex: "([^:]+):\\d+"
