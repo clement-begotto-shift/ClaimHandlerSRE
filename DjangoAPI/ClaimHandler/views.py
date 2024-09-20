@@ -1,10 +1,12 @@
 from django.http import JsonResponse
 
 from rest_framework.views import APIView
-
 from rest_framework.parsers import JSONParser
 from rest_framework.decorators import api_view
 from rest_framework import status
+
+from drf_yasg import openapi
+from drf_yasg.utils import swagger_auto_schema
 
 from .serializers import ClaimSerializer
 from .models import Claim
@@ -12,6 +14,13 @@ from .models import Claim
 
 class ClaimHandlerView(APIView):
 
+    @swagger_auto_schema(
+            method = 'get',
+            manual_parameters=[
+                openapi.Parameter('Id', openapi.IN_QUERY,description="Id of the claim", type=openapi.TYPE_INTEGER,required=False)
+            ],
+            responses={200: "Claim found.", "404": "Claim not found."}
+    )
     @api_view(['GET'])
     def get(request):
         claim_id = request.query_params.get('Id', None)
@@ -31,11 +40,13 @@ class ClaimHandlerView(APIView):
             serializer = ClaimSerializer(claims, many=True)
             return JsonResponse(serializer.data, safe=False, status=status.HTTP_200_OK)
 
+    @swagger_auto_schema(
+        method='post',
+        request_body=ClaimSerializer(many=True),
+        responses={201: 'Created', 200: 'Already exist', 400: 'Bad request.'}
+    )
     @api_view(['POST'])
-    def postClaims(request):
-        if request.method != 'POST':
-            return JsonResponse("Invalid request method", status=status.HTTP_405_METHOD_NOT_ALLOWED, safe=False)
-
+    def post(request):
         try:
             # Parse the incoming request data
             claim_data = JSONParser().parse(request)
@@ -46,56 +57,34 @@ class ClaimHandlerView(APIView):
         if not isinstance(claim_data, list):
             return JsonResponse({"error": "Expected a list of claims"}, status=status.HTTP_400_BAD_REQUEST, safe=False)
 
-        # List to collect any errors during the sanity checks
-        errors = []
+        incoming_ids = []
+        missing_ids = []
+        for idx, incoming_claim in enumerate(claim_data):
+            claim_id = incoming_claim.get('Id', None)
+            if claim_id == None or not str(claim_id).isdigit():
+                missing_ids.append(idx)
+            else:
+                incoming_ids.append(claim_id)
         
-        # Sanity check each claim in the list
-        required_fields = {'Id': int, 'ClaimName': str, 'Verified': bool}
-        valid_claims = []
-
-        for idx, claim in enumerate(claim_data):
-            if not isinstance(claim, dict):
-                errors.append({"index": idx, "error": "Each claim should be a dictionary"})
-                continue
-
-            missing_fields = [field for field in required_fields if field not in claim]
-            if missing_fields:
-                errors.append({"index": idx, "error": f"Missing required fields: {', '.join(missing_fields)}"})
-                continue
-
-            # Check if the field types are correct
-            field_type_errors = [
-                f"Field '{field}' should be of type {required_fields[field].__name__}"
-                for field in required_fields
-                if not isinstance(claim.get(field), required_fields[field])
-            ]
-
-            if field_type_errors:
-                errors.append({"index": idx, "error": ", ".join(field_type_errors)})
-                continue
-
-            # Add the claim to the valid claims list if it passed all checks
-            valid_claims.append(claim)
-
-        # If there are errors, return them
-        if errors:
-            return JsonResponse({"errors": errors}, status=status.HTTP_400_BAD_REQUEST, safe=False)
-
-        if not valid_claims:
-            return JsonResponse({"message": "No valid claims to process"}, status=status.HTTP_400_BAD_REQUEST, safe=False)
-
-        # Extract the list of IDs from the valid claims
-        incoming_ids = [claim['Id'] for claim in valid_claims]
+        if missing_ids:
+            return JsonResponse({
+                "error": "Some claims have malformed or no id",
+                "index_with_missing_ids":list(missing_ids)
+                }, status=status.HTTP_400_BAD_REQUEST, safe=False)
 
         # Check which IDs already exist in the database
         existing_claims = Claim.objects.filter(Id__in=incoming_ids)
         existing_ids = set(existing_claims.values_list('Id', flat=True))
 
         # Filter out the claims that already exist
-        new_claims = [claim for claim in valid_claims if claim['Id'] not in existing_ids]
+        new_claims = [claim for claim in claim_data if claim['Id'] not in existing_ids]
 
-        if not new_claims:
-            return JsonResponse({"message": "All valid claims already exist"}, status=status.HTTP_200_OK, safe=False)
+        if len(new_claims) == 0:
+            return JsonResponse({
+                "message": "All valid claims already exist",
+                "existing_ids": list(existing_ids),
+                # "errors": errors
+                }, status=status.HTTP_200_OK, safe=False)
 
         # Serialize the new claims
         claims_serializer = ClaimSerializer(data=new_claims, many=True)
@@ -104,9 +93,10 @@ class ClaimHandlerView(APIView):
         if claims_serializer.is_valid():
             claims_serializer.save()
             return JsonResponse({
-                "message": "Claims added successfully",
+                "message": f"{len(new_claims)} Claims added successfully",
                 "added_claims": new_claims,
                 "existing_ids": list(existing_ids),
+                # "errors": errors
             }, status=status.HTTP_201_CREATED, safe=False)
 
         # Return validation errors from the serializer
