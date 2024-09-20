@@ -1,5 +1,7 @@
 venv
 TODO.txt
 db.sqlite3
+DjangoAPI/.coverage
 DjangoAPI/DjangoAPI/__pycache__
 DjangoAPI/ClaimHandler/__pycache__
+DjangoAPI/ClaimHandler/migrations/__pycache__
